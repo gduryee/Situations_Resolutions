@@ -6,7 +6,7 @@ import random
 
 
 # Path to your file
-FILE_PATH = r"C:\Users\user\Documents\USA Swimming\Situations-n-Resolutions-with-sections.xlsx"
+FILE_PATH = r"C:\Users\user\Documents\GitHub\Situations_Resolutions\Situations-n-Resolutions-with-sections.xlsx"
 
 def display_card(row):
     """Helper function to display a situation and wait for the resolution."""
