@@ -97,7 +97,6 @@ def get_new_situation(filtered_df):
         # If empty, reset the index so no card is shown
         st.session_state.current_index = None
 
-
 @st.cache_data
 def load_data():
     file_path = "Situations-n-Resolutions-with-sections.xlsx"
@@ -156,7 +155,6 @@ def handle_seq_change():
     elif val < 1:
         st.session_state.seq_num_input = total
 
-
 # --- MODE 1: Review BY STROKE/TOPIC ---
 if mode == "Review by Stroke/Topic":
     stroke_topic_list = sorted(df['Stroke'].dropna().unique())
@@ -182,39 +180,6 @@ if mode == "Review by Stroke/Topic":
         # User hasn't clicked a segment yet
         st.info("Tap a Stroke/Topic above to start.")
         st.session_state.current_index = None
-
-# # --- MODE 2: SEQUENTIAL REVIEW ---
-# elif mode == "Sequential Review":
-#     stroke_topic_list = sorted(df['Stroke'].dropna().unique())
-#     selected_stroke_topic = st.segmented_control("Select Stroke/Topic:", stroke_topic_list, key="seq_seg")
-    
-#     # ONLY proceed if a topic is selected
-#     if selected_stroke_topic:
-#         section_df = df[df['Stroke'] == selected_stroke_topic].sort_values(by='Number')
-        
-#         if not section_df.empty:
-#             # Use a number input to let the user scroll through the sorted list
-#             idx_in_list = st.number_input(
-#                 f"Item (1 of {len(section_df)})", 
-#                 min_value=1, 
-#                 max_value=len(section_df), 
-#                 step=1, 
-#                 key="seq_num"
-#             )
-            
-#             new_index = section_df.index[idx_in_list - 1]
-            
-#             # Update the session state and reset resolution button if the item changed
-#             if st.session_state.current_index != new_index:
-#                 st.session_state.current_index = new_index
-#                 st.session_state.show_resolution_clicked = False
-#         else:
-#             st.warning("No situations found for this selection.")
-#             st.session_state.current_index = None
-#     else:
-#         st.info("Please select a Stroke/Topic to begin sequential review.")
-#         st.session_state.current_index = None
-
 
 # --- MODE 2: SEQUENTIAL REVIEW ---
 elif mode == "Sequential Review":
@@ -283,7 +248,6 @@ elif mode == "Search by Number":
             st.warning("Number not found.")
             st.session_state.current_index = None
 
-
 # --- MODE 4: Total Random Shuffle ---
 elif mode == "Total Random Shuffle":
     # If we just switched to this mode and don't have a situation yet, 
@@ -325,9 +289,7 @@ if st.session_state.current_index is not None:
         st.warning(f"**Applicable Rule:**")
         st.markdown(f'<div style="font-size: {font_size}px;">{row["Applicable Rule"]}</div>', unsafe_allow_html=True)
 
-
 # --- FOOTER ---
-
 def landscape_footer_mode():
     st.markdown("---") # Adds a horizontal line to separate the content from the footer
     st.markdown(
@@ -339,7 +301,6 @@ def landscape_footer_mode():
             """, 
             unsafe_allow_html=True
     )
-
 
 def portrait_footer_mode():
     with st.container(horizontal_alignment="center"):
