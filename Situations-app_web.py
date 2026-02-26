@@ -3,59 +3,100 @@ import pandas as pd
 from streamlit_js_eval import streamlit_js_eval
 
 # Set Page Config
-st.set_page_config(page_title="USA Swimming Officials", layout="centered")
+st.set_page_config(page_title="USA Swimming Officials - Situations & Resolutions", layout="centered")
 
 image = 'USA_Swimming_Logo.svg'
-
 css = f'''
 <style>
+    /* 1. Remove padding from the main content area */
+    .block-container {{
+        padding-top: 0rem;
+        padding-bottom: 0rem;
+        margin-top: -2rem; /* Forces content higher */
+    }}
+
+    /* 2. Hide the header/decoration bar at the top 
+    header {{
+        visibility: hidden;
+        height: 0px;
+    }}*/
+
+    /* 3. Keep your background image logic 
     .stApp {{
         background-image: url({image});
         background-size: cover;
-
     }}
     .stApp > header {{
         background-color: transparent;
-    }}
+    }}*/
 </style>
 '''
 st.markdown(css, unsafe_allow_html=True)
 
-
-# st.markdown("""
-#     <style>
-#     /* Force images to center on mobile */
-#     [data-testid="stImage"] {
-#         display: flex;
-#         justify-content: center;
-#     }
-#     </style>
-#     """, unsafe_allow_html=True)
-
-# Get viewport dimensions
+# Get dimensions to determine Orientation. This is used to control formating where needed.
 def get_orientation_mode():
-    #size = get_window_size()
-    #if size:
-    # Get width and height via JavaScript
-    width = streamlit_js_eval(js_expressions='screen.width', key='WIDTH')
-    height = streamlit_js_eval(js_expressions='screen.height', key='HEIGHT')
+    # Use a static key. streamlit_js_eval will still update the values 
+    # if the user rotates their phone.
+    width = streamlit_js_eval(js_expressions='screen.width', key='WIDTH_STATIC')
+    height = streamlit_js_eval(js_expressions='screen.height', key='HEIGHT_STATIC')
 
     if width is not None and height is not None:
-        # Determine orientation
         if width < height:
-            orientation = "Portrait"
+            return "Portrait"
         else:
-            orientation = "Landscape"
-        #st.write(f"Device Orientation: {orientation}")
+            return "Landscape"
+    # Default to Portrait if JS hasn't loaded yet
+    return "Portrait"
 
-        # Force rerun to update if orientation changes (optional)
-    # if 'last_orient' not in st.session_state:
-    #     st.session_state['last_orient'] = orientation
-        
-    # if st.session_state['last_orient'] != orientation:
-    #     st.session_state['last_orient'] = orientation
-    #     st.rerun()
-    return orientation
+# --- SIDEBAR NAVIGATION ---
+st.sidebar.title("Navigation")
+mode = st.sidebar.radio(
+    "Choose a Study Mode:",
+    ["Review by Stroke/Topic", "Sequential Review", "Search by Number", "Total Random Shuffle"]
+)
+
+# --- MODE SWITCH DETECTION ---
+if 'last_mode' not in st.session_state:
+    st.session_state.last_mode = mode
+
+# If the mode changed, clear the current card so the new mode can generate its own
+if st.session_state.last_mode != mode:
+    st.session_state.current_index = None
+    st.session_state.show_resolution_clicked = False
+    st.session_state.last_mode = mode
+
+# --- SIDEBAR OPTIONS ---
+st.sidebar.markdown("---")
+st.sidebar.subheader("Options")
+# always_show = st.sidebar.checkbox("Always show resolution", value=False)
+# Change to 'Hide' - default is False (so it shows by default)
+hide_resolution = st.sidebar.checkbox("Hide resolution", value=False)
+
+# Font Size Slider
+font_size = st.sidebar.slider("Adjust Font Size", min_value=14, max_value=36, value=18)
+
+orientation_mode = get_orientation_mode()
+#st.write(f"Orientation Mode: {orientation_mode}")
+
+# --- SESSION STATE MANAGEMENT ---
+if 'current_index' not in st.session_state:
+    st.session_state.current_index = None
+if 'show_resolution_clicked' not in st.session_state:
+    st.session_state.show_resolution_clicked = False
+
+# def get_new_situation(filtered_df):
+#     st.session_state.current_index = filtered_df.sample(n=1).index[0]
+#     st.session_state.show_resolution_clicked = False
+
+def get_new_situation(filtered_df):
+    # Check if the dataframe actually has data
+    if filtered_df is not None and len(filtered_df) > 0:
+        st.session_state.current_index = filtered_df.sample(n=1).index[0]
+        st.session_state.show_resolution_clicked = False
+    else:
+        # If empty, reset the index so no card is shown
+        st.session_state.current_index = None
+
 
 @st.cache_data
 def load_data():
@@ -82,136 +123,155 @@ def landscape_title_mode():
         st.markdown('</div>', unsafe_allow_html=True)
 
     with header_col2:
-        st.markdown("<h2 style='text-align: center; margin-bottom: 0px;'>USA Swimming Officials</h2>", unsafe_allow_html=True)
-        # Adding a sub-header that stays close to the main title
-        st.markdown("<h5 style='text-align: center; '\
-                >Situations & Resolutions</h5>", unsafe_allow_html=True)
-        st.markdown("<h5 style='text-align: center; '\
-                >Stroke & Turn</h5>", unsafe_allow_html=True)
+        st.markdown("<h2 style='text-align: center; margin-top: -20px;'>USA Swimming Officials</h2>", unsafe_allow_html=True)
+        st.markdown("<h4 style='text-align: center; margin-top: -10px;'>Situations & Resolutions</h4>", unsafe_allow_html=True)
+        st.markdown("<h5 style='text-align: center; margin-top: -10px;'>Stroke & Turn</h5>", unsafe_allow_html=True)
     with header_col3:
         st.markdown('<div style="text-align: center;">', unsafe_allow_html=True)
         st.image("pns_logo.png", width=100)
         st.markdown('</div>', unsafe_allow_html=True)
 
-
-def mobile_title_mode():
-    # Use columns for desktop. On mobile, Streamlit will stack these 
-    # if the screen is narrow enough, but we'll optimize the content.
-    # On mobile, we center the image using a div
-    header_col1, header_col2 = st.columns(2)
-
-    with header_col1:
-        # On mobile, we center the image using a div
-        st.markdown('<div style="text-align: center;">', unsafe_allow_html=True)
-        st.image("USA_Swimming_Logo.svg", width=50) # Slightly smaller for mobile
-        st.markdown('</div>', unsafe_allow_html=True)
-    with header_col2:
-        # On mobile, we center the image using a div
-        st.markdown('<div style="text-align: center;">', unsafe_allow_html=True)
-        st.image("pns_logo.png", width=50)
-        st.markdown('</div>', unsafe_allow_html=True)
-
-    st.markdown("<h3 style='text-align: center; margin-bottom: 0px;'>USA Swimming Officials</h3>", unsafe_allow_html=True)
-    # Adding a sub-header that stays close to the main title
-
-    st.markdown("<h5 style='text-align: center; margin-bottom: 0px;'\
-                >Situations & Resolutions</h5>", unsafe_allow_html=True)
-    st.markdown("<h5 style='text-align: center; margin-bottom: 0px;'\
-                >Stroke & Turn</h5>", unsafe_allow_html=True)
+def portrait_title_mode():
+     with st.container(horizontal_alignment="center"):
+        st.image("USA_Swimming_Logo.svg", width=100)
+        # Reduced margin-top on the first title
+        st.markdown("<h3 style='text-align: center; margin-top: -20px;'>USA Swimming Officials</h3>", unsafe_allow_html=True)
+        st.markdown("<h5 style='text-align: center; margin-top: -10px;'>Situations & Resolutions</h5>", unsafe_allow_html=True)
+        st.markdown("<h5 style='text-align: center; margin-top: -10px;'>Stroke & Turn</h5>", unsafe_allow_html=True)
 
 # --- APP UI (Mobile Friendly) ---
-orientation_mode = get_orientation_mode()
-#st.write(f"Orientation Mode: {orientation_mode}")
 if orientation_mode == "Portrait":
-    mobile_title_mode()
+    portrait_title_mode()
 else:
     landscape_title_mode()
 
-# --- SIDEBAR NAVIGATION ---
-st.sidebar.title("Navigation")
-mode = st.sidebar.radio(
-    "Choose a Study Mode:",
-    ["Review by Stroke/Topic", "Sequential Review", "Search by Number", "Total Random Shuffle"]
-)
+# --- HELPER FOR MODE 2 WRAPPING ---
+def handle_seq_change():
+    # This runs the second the user clicks +/-
+    val = st.session_state.seq_num_input
+    total = st.session_state.max_items_in_section
+    
+    if val > total:
+        st.session_state.seq_num_input = 1
+    elif val < 1:
+        st.session_state.seq_num_input = total
 
-# --- MODE SWITCH DETECTION ---
-if 'last_mode' not in st.session_state:
-    st.session_state.last_mode = mode
-
-# If the mode changed, clear the current card so the new mode can generate its own
-if st.session_state.last_mode != mode:
-    st.session_state.current_index = None
-    st.session_state.show_resolution_clicked = False
-    st.session_state.last_mode = mode
-
-# --- SIDEBAR OPTIONS ---
-st.sidebar.markdown("---")
-st.sidebar.subheader("Options")
-always_show = st.sidebar.checkbox("Always show resolution", value=False)
-
-# Font Size Slider
-font_size = st.sidebar.slider("Adjust Font Size", min_value=14, max_value=36, value=18)
-
-# --- SESSION STATE MANAGEMENT ---
-if 'current_index' not in st.session_state:
-    st.session_state.current_index = None
-if 'show_resolution_clicked' not in st.session_state:
-    st.session_state.show_resolution_clicked = False
-
-def get_new_situation(filtered_df):
-    st.session_state.current_index = filtered_df.sample(n=1).index[0]
-    st.session_state.show_resolution_clicked = False
 
 # --- MODE 1: Review BY STROKE/TOPIC ---
 if mode == "Review by Stroke/Topic":
     stroke_topic_list = sorted(df['Stroke'].dropna().unique())
-    selected_stroke_topic = st.selectbox("Select Stroke/Topic:", stroke_topic_list)
     
-    # Filter the dataframe for the selection
-    section_df = df[df['Stroke'] == selected_stroke_topic]
+    # Selection
+    selected_stroke_topic = st.segmented_control("Select Stroke/Topic:", stroke_topic_list)
     
-    # Check if we need to load a situation for the first time 
-    # OR if the user just switched strokes in the dropdown
-    if st.session_state.current_index is None or df.loc[st.session_state.current_index]['Stroke'] != selected_stroke_topic:
-        get_new_situation(section_df)
+    if selected_stroke_topic:
+        section_df = df[df['Stroke'] == selected_stroke_topic]
+        
+        # Double check that we actually found rows for this stroke
+        if not section_df.empty:
+            # Load new situation if none is selected OR if the stroke changed
+            if st.session_state.current_index is None or \
+               st.session_state.current_index not in section_df.index:
+                get_new_situation(section_df)
 
-    # We keep the button so the user can "reroll" a new random item 
-    # within the same stroke without changing the dropdown.
-    if st.button("Get Another Random Situation"):
-        get_new_situation(section_df)
+            if st.button("Get Another Random Situation"):
+                get_new_situation(section_df)
+        else:
+            st.warning(f"No situations found for {selected_stroke_topic}")
+    else:
+        # User hasn't clicked a segment yet
+        st.info("Tap a Stroke/Topic above to start.")
+        st.session_state.current_index = None
+
+# # --- MODE 2: SEQUENTIAL REVIEW ---
+# elif mode == "Sequential Review":
+#     stroke_topic_list = sorted(df['Stroke'].dropna().unique())
+#     selected_stroke_topic = st.segmented_control("Select Stroke/Topic:", stroke_topic_list, key="seq_seg")
+    
+#     # ONLY proceed if a topic is selected
+#     if selected_stroke_topic:
+#         section_df = df[df['Stroke'] == selected_stroke_topic].sort_values(by='Number')
+        
+#         if not section_df.empty:
+#             # Use a number input to let the user scroll through the sorted list
+#             idx_in_list = st.number_input(
+#                 f"Item (1 of {len(section_df)})", 
+#                 min_value=1, 
+#                 max_value=len(section_df), 
+#                 step=1, 
+#                 key="seq_num"
+#             )
+            
+#             new_index = section_df.index[idx_in_list - 1]
+            
+#             # Update the session state and reset resolution button if the item changed
+#             if st.session_state.current_index != new_index:
+#                 st.session_state.current_index = new_index
+#                 st.session_state.show_resolution_clicked = False
+#         else:
+#             st.warning("No situations found for this selection.")
+#             st.session_state.current_index = None
+#     else:
+#         st.info("Please select a Stroke/Topic to begin sequential review.")
+#         st.session_state.current_index = None
+
 
 # --- MODE 2: SEQUENTIAL REVIEW ---
 elif mode == "Sequential Review":
-    stroke_topic = sorted(df['Stroke'].dropna().unique())
-    selected_stroke_topic = st.selectbox("Select Stroke/Topic:", stroke_topic)
+    stroke_topic_list = sorted(df['Stroke'].dropna().unique())
+    selected_stroke_topic = st.segmented_control("Select Stroke/Topic:", stroke_topic_list, key="seq_seg")
     
-    section_df = df[df['Stroke'] == selected_stroke_topic].sort_values(by='Number')
-    
-    # Use a key for the number input so Streamlit tracks it better
-    idx_in_list = st.number_input("Item Number", min_value=1, max_value=len(section_df), step=1, key="seq_num")
-    
-    new_index = section_df.index[idx_in_list - 1]
-    
-    # If the user moves to a new item, reset the "Show Resolution" button state
-    if st.session_state.current_index != new_index:
-        st.session_state.current_index = new_index
-        st.session_state.show_resolution_clicked = False
+    if selected_stroke_topic:
+        section_df = df[df['Stroke'] == selected_stroke_topic].sort_values(by='Number')
+        total_items = len(section_df)
+        
+        # Store the max items in session state so the callback can see it
+        st.session_state.max_items_in_section = total_items
 
-# # --- MODE 3: Search by Number ---
-# elif mode == "Search by Number":
-#     num_search = st.text_input("Enter Situation Number:")
-#     if num_search:
-#         results = df[df['Number'].astype(str).str.strip() == num_search.strip()]
-#         if not results.empty:
-#             st.session_state.current_index = results.index[0]
-#         else:
-#             st.warning("Number not found.")
+        # --- RESET LOGIC ---
+        # If the stroke changed, force the number input back to 1
+        if "last_selected_stroke" not in st.session_state:
+            st.session_state.last_selected_stroke = selected_stroke_topic
+            
+        if st.session_state.last_selected_stroke != selected_stroke_topic:
+            st.session_state.seq_num_input = 1
+            st.session_state.last_selected_stroke = selected_stroke_topic
+
+        # --- THE WRAPPING WIDGET ---
+        # We use the 'on_change' callback to trigger the wrap-around math
+        current_val = st.number_input(
+            f"Item (1 of {total_items})", 
+            min_value=0, 
+            max_value=total_items + 1, 
+            step=1, 
+            key="seq_num_input",
+            on_change=handle_seq_change
+        )
+
+        # Map the widget value to the actual dataframe index
+        # (Using max/min as a safety net if the callback is mid-process)
+        safe_val = max(1, min(current_val, total_items))
+        new_index = section_df.index[safe_val - 1]
+        
+        if st.session_state.current_index != new_index:
+            st.session_state.current_index = new_index
+            st.session_state.show_resolution_clicked = False
+    else:
+        st.info("Please select a Stroke/Topic.")
+        st.session_state.current_index = None
 
 # --- MODE 3: Search by Number ---
 elif mode == "Search by Number":
     # We explicitly set this to None if they haven't searched yet 
     # so the old card from the previous mode disappears.
-    num_search = st.text_input("Enter Situation Number:")
+    # find the min and max numbers in the dataset to guide the user on valid inputs
+    min_num = int(df['Number'].min())
+    max_num = int(df['Number'].max())
+    
+    st.write(f"Available Situations: **{min_num} to {max_num}**")
+    num_search = st.text_input("Enter Situation Number:", placeholder=f"e.g. {min_num}")
+
+    #num_search = st.text_input("Enter Situation Number:")
     
     if not num_search:
         st.session_state.current_index = None
@@ -247,7 +307,8 @@ if st.session_state.current_index is not None:
     # Situation Display
     st.markdown(f'<div style="font-size: {font_size}px;"><b>Situation:</b><br>{row["Situation"]}</div>', unsafe_allow_html=True)
     
-    should_show = always_show or st.session_state.show_resolution_clicked
+    # The resolution should show if NOT hidden OR if the manual button was clicked
+    should_show = (not hide_resolution) or st.session_state.show_resolution_clicked
 
     if not should_show:
         # We add a unique key to the button based on the index 
@@ -266,12 +327,38 @@ if st.session_state.current_index is not None:
 
 
 # --- FOOTER ---
-st.markdown("---") # Adds a horizontal line to separate the content from the footer
-st.markdown(
-    """
-    <div style="text-align: center; color: grey; font-size: 14px;">
-        © USA Swimming, National Officials Committee, Version 03/07/2025<br>
-    </div>
-    """, 
-    unsafe_allow_html=True
-)
+
+def landscape_footer_mode():
+    st.markdown("---") # Adds a horizontal line to separate the content from the footer
+    st.markdown(
+            """
+            <div style="text-align: center; color: grey; font-size: 14px;">
+                © 2025 USA Swimming <br>
+                National Officials Committee, Version 03/07/2025<br>
+            </div>
+            """, 
+            unsafe_allow_html=True
+    )
+
+
+def portrait_footer_mode():
+    with st.container(horizontal_alignment="center"):
+        st.markdown("---") # Adds a horizontal line to separate the content from the footer
+        st.image("pns_logo.png", width=100)
+        st.markdown(
+            """
+            <div style="text-align: center; color: grey; font-size: 14px;">
+                © 2025 USA Swimming <br>
+                National Officials Committee, Version 03/07/2025<br>
+            </div>
+            """, 
+            unsafe_allow_html=True
+        )
+
+# --- Footer - Check Orientationa and set footer ---
+# orientation_mode = get_orientation_mode()
+#st.write(f"Orientation Mode: {orientation_mode}")
+if orientation_mode == "Portrait":
+    portrait_footer_mode()
+else:
+    landscape_footer_mode()
