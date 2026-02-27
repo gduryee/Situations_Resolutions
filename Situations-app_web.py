@@ -3,6 +3,7 @@ import pandas as pd
 from streamlit_js_eval import streamlit_js_eval
 import base64
 import os
+import re
 
 # Set Page Config
 st.set_page_config(page_title="USA Swimming Officials - Situations & Resolutions", layout="centered")
@@ -28,6 +29,27 @@ css = f'''
 </style>
 '''
 st.markdown(css, unsafe_allow_html=True)
+
+def highlight_text(text, query):
+    if not query or not isinstance(text, str):
+        return text
+    
+    # We use a span with a background color to make it look like a highlighter pen
+    # Yellow background with black text for maximum contrast
+    highlight_style = (
+        'background-color: #ffff00; '  # Bright Yellow
+        'color: #000000; '            # Black text
+        'font-weight: bold; '          # Bold
+        'padding: 2px 4px; '           # Slight padding for "pill" look
+        'border-radius: 3px;'          # Rounded corners
+    )
+    
+    # re.IGNORECASE ensures we find "Foot" even if user typed "foot"
+    # re.escape ensures we don't crash if user types special characters like "("
+    compiled = re.compile(re.escape(query), re.IGNORECASE)
+    
+    # This replaces the match while preserving the original casing of the text
+    return compiled.sub(lambda m: f'<span style="{highlight_style}">{m.group()}</span>', text)
 
 def get_img_with_href(local_img_path, target_url, width=None):
     """Encodes a local image file to Base64 and wraps it in an HTML hyperlink tag.
@@ -248,34 +270,8 @@ def handle_seq_change():
     elif val < 1:
         st.session_state.seq_num_input = total
 
-# --- MODE 1: Review BY STROKE/TOPIC ---
-if mode == "Review by Stroke/Topic":
-    stroke_topic_list = sorted(df['Stroke'].dropna().unique())
-    
-    # Selection
-    selected_stroke_topic = st.segmented_control("Select Stroke/Topic:", stroke_topic_list)
-    
-    if selected_stroke_topic:
-        section_df = df[df['Stroke'] == selected_stroke_topic]
-        
-        # Double check that we actually found rows for this stroke
-        if not section_df.empty:
-            # Load new situation if none is selected OR if the stroke changed
-            if st.session_state.current_index is None or \
-               st.session_state.current_index not in section_df.index:
-                get_new_situation(section_df)
-
-            if st.button("Get Another Random Situation"):
-                get_new_situation(section_df)
-        else:
-            st.warning(f"No situations found for {selected_stroke_topic}")
-    else:
-        # User hasn't clicked a segment yet
-        st.info("Tap a Stroke/Topic above to start.")
-        st.session_state.current_index = None
-
-# --- MODE 2: SEQUENTIAL REVIEW ---
-elif mode == "Sequential Review":
+# --- MODE 1: SEQUENTIAL REVIEW ---
+if mode == "Sequential Review":
     stroke_topic_list = sorted(df['Stroke'].dropna().unique())
     selected_stroke_topic = st.segmented_control("Select Stroke/Topic:", stroke_topic_list, key="seq_seg")
     
@@ -318,7 +314,7 @@ elif mode == "Sequential Review":
         st.info("Please select a Stroke/Topic.")
         st.session_state.current_index = None
 
-# --- MODE 3: KEYWORD SEARCH ---
+# --- MODE 2: KEYWORD SEARCH ---
 elif mode == "Keyword Search":
     st.markdown("### 🔍 Keyword Search")
     
@@ -364,7 +360,7 @@ elif mode == "Keyword Search":
     else:
         st.session_state.current_index = None
 
-# --- MODE 4: Search by Number ---
+# --- MODE 3: Search by Number ---
 elif mode == "Search by Number":
     # We explicitly set this to None if they haven't searched yet 
     # so the old card from the previous mode disappears.
@@ -387,6 +383,32 @@ elif mode == "Search by Number":
             st.warning("Number not found.")
             st.session_state.current_index = None
 
+# --- MODE 4: Review BY STROKE/TOPIC ---
+if mode == "Review by Stroke/Topic":
+    stroke_topic_list = sorted(df['Stroke'].dropna().unique())
+    
+    # Selection
+    selected_stroke_topic = st.segmented_control("Select Stroke/Topic:", stroke_topic_list)
+    
+    if selected_stroke_topic:
+        section_df = df[df['Stroke'] == selected_stroke_topic]
+        
+        # Double check that we actually found rows for this stroke
+        if not section_df.empty:
+            # Load new situation if none is selected OR if the stroke changed
+            if st.session_state.current_index is None or \
+               st.session_state.current_index not in section_df.index:
+                get_new_situation(section_df)
+
+            if st.button("Get Another Random Situation"):
+                get_new_situation(section_df)
+        else:
+            st.warning(f"No situations found for {selected_stroke_topic}")
+    else:
+        # User hasn't clicked a segment yet
+        st.info("Tap a Stroke/Topic above to start.")
+        st.session_state.current_index = None
+
 # --- MODE 5: Total Random Shuffle ---
 elif mode == "Total Random Shuffle":
     # If we just switched to this mode and don't have a situation yet, 
@@ -408,7 +430,16 @@ if st.session_state.current_index is not None:
     st.info(f"**Stroke/Topic: {row['Stroke']}  #{row['Number']}**")
     
     # Situation Display
-    st.markdown(f'<div style="font-size: {font_size}px;"><b>Situation:</b><br>{row["Situation"]}</div>', unsafe_allow_html=True)
+    # Check if we are in Keyword Search mode to apply highlighting
+    display_sit = row["Situation"]
+    display_res = row["Recommended resolution"]
+
+    # Apply highlighting if in Search Mode
+    if mode == "Keyword Search" and 'search_query' in locals() and search_query:
+        display_sit = highlight_text(display_sit, search_query)
+        display_res = highlight_text(display_res, search_query)
+
+    st.markdown(f'<div style="font-size: {font_size}px;"><b>Situation:</b><br>{display_sit}</div>', unsafe_allow_html=True)
     
     # The resolution should show if NOT hidden OR if the manual button was clicked
     should_show = (not hide_resolution) or st.session_state.show_resolution_clicked
@@ -424,7 +455,7 @@ if st.session_state.current_index is not None:
         st.write("") 
         st.success("Recommended Resolution:")
         st.markdown(f'<div style="font-size: {font_size}px;">{row["Recommended resolution"]}</div>', unsafe_allow_html=True)
-        
+        st.markdown(f'<div style="font-size: {font_size}px;">{display_res}</div>', unsafe_allow_html=True)
         st.warning(f"**Applicable Rule:**")
         st.markdown(f'<div style="font-size: {font_size}px;">{row["Applicable Rule"]}</div>', unsafe_allow_html=True)
 
