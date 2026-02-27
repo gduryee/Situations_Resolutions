@@ -3,6 +3,7 @@ import pandas as pd
 from streamlit_js_eval import streamlit_js_eval
 import base64
 import os
+import re
 
 # Set Page Config
 st.set_page_config(page_title="USA Swimming Officials - Situations & Resolutions", layout="centered")
@@ -28,6 +29,27 @@ css = f'''
 </style>
 '''
 st.markdown(css, unsafe_allow_html=True)
+
+def highlight_text(text, query):
+    if not query or not isinstance(text, str):
+        return text
+    
+    # We use a span with a background color to make it look like a highlighter pen
+    # Yellow background with black text for maximum contrast
+    highlight_style = (
+        'background-color: #ffff00; '  # Bright Yellow
+        'color: #000000; '            # Black text
+        'font-weight: bold; '          # Bold
+        'padding: 2px 4px; '           # Slight padding for "pill" look
+        'border-radius: 3px;'          # Rounded corners
+    )
+    
+    # re.IGNORECASE ensures we find "Foot" even if user typed "foot"
+    # re.escape ensures we don't crash if user types special characters like "("
+    compiled = re.compile(re.escape(query), re.IGNORECASE)
+    
+    # This replaces the match while preserving the original casing of the text
+    return compiled.sub(lambda m: f'<span style="{highlight_style}">{m.group()}</span>', text)
 
 def get_img_with_href(local_img_path, target_url, width=None):
     """Encodes a local image file to Base64 and wraps it in an HTML hyperlink tag.
@@ -109,18 +131,19 @@ with st.sidebar:
         usa_swimming_logo_w_hyperlink()
     st.markdown("---")
     st.title("Navigation")
-    mode = st.sidebar.radio(
+mode = st.sidebar.radio(
         "Choose a Study Mode:",
         ["Sequential Review", 
+         "Random Shuffle",
         "Keyword Search",
-        "Search by Number", 
-        "Review by Stroke/Topic", 
-        "Total Random Shuffle"]
+        "Search by Number"]  # Renamed and consolidated
     )
 
 # --- MODE SWITCH DETECTION ---
 if 'last_mode' not in st.session_state:
     st.session_state.last_mode = mode
+if 'seq_num_input' not in st.session_state:
+    st.session_state.seq_num_input = 1
 
 # If the mode changed, clear the current card so the new mode can generate its own
 if st.session_state.last_mode != mode:
@@ -156,10 +179,6 @@ if 'current_index' not in st.session_state:
 if 'show_resolution_clicked' not in st.session_state:
     st.session_state.show_resolution_clicked = False
 
-# def get_new_situation(filtered_df):
-#     st.session_state.current_index = filtered_df.sample(n=1).index[0]
-#     st.session_state.show_resolution_clicked = False
-
 def get_new_situation(filtered_df):
     # Check if the dataframe actually has data
     if filtered_df is not None and len(filtered_df) > 0:
@@ -193,7 +212,6 @@ def perform_keyword_search(df, query, search_field, selected_stroke):
             filtered_df["Recommended resolution"].str.lower().str.contains(q, na=False)
         )
         results = filtered_df[mask]
-        
     return results
 
 @st.cache_data
@@ -237,57 +255,34 @@ if orientation_mode == "Portrait":
 else:
     landscape_title_mode()
 
-# --- HELPER FOR MODE 2 WRAPPING ---
+# --- HELPER FOR MODE 1 (Sequential) Number Wrapping ---
 def handle_seq_change():
-    # This runs the second the user clicks +/-
     val = st.session_state.seq_num_input
     total = st.session_state.max_items_in_section
     
     if val > total:
         st.session_state.seq_num_input = 1
-    elif val < 1:
+    elif val <= 0: # Catch 0 or negative immediately
         st.session_state.seq_num_input = total
 
-# --- MODE 1: Review BY STROKE/TOPIC ---
-if mode == "Review by Stroke/Topic":
+# --- MODE 1: SEQUENTIAL REVIEW ---
+if mode == "Sequential Review":
     stroke_topic_list = sorted(df['Stroke'].dropna().unique())
+    default_stroke = "Backstroke" if "Backstroke" in stroke_topic_list else stroke_topic_list[0]
     
-    # Selection
-    selected_stroke_topic = st.segmented_control("Select Stroke/Topic:", stroke_topic_list)
-    
-    if selected_stroke_topic:
-        section_df = df[df['Stroke'] == selected_stroke_topic]
-        
-        # Double check that we actually found rows for this stroke
-        if not section_df.empty:
-            # Load new situation if none is selected OR if the stroke changed
-            if st.session_state.current_index is None or \
-               st.session_state.current_index not in section_df.index:
-                get_new_situation(section_df)
-
-            if st.button("Get Another Random Situation"):
-                get_new_situation(section_df)
-        else:
-            st.warning(f"No situations found for {selected_stroke_topic}")
-    else:
-        # User hasn't clicked a segment yet
-        st.info("Tap a Stroke/Topic above to start.")
-        st.session_state.current_index = None
-
-# --- MODE 2: SEQUENTIAL REVIEW ---
-elif mode == "Sequential Review":
-    stroke_topic_list = sorted(df['Stroke'].dropna().unique())
-    selected_stroke_topic = st.segmented_control("Select Stroke/Topic:", stroke_topic_list, key="seq_seg")
+    selected_stroke_topic = st.segmented_control(
+        "Select Stroke/Topic:", 
+        stroke_topic_list, 
+        key="seq_seg", 
+        default=default_stroke
+    )
     
     if selected_stroke_topic:
         section_df = df[df['Stroke'] == selected_stroke_topic].sort_values(by='Number')
         total_items = len(section_df)
-        
-        # Store the max items in session state so the callback can see it
         st.session_state.max_items_in_section = total_items
 
-        # --- RESET LOGIC ---
-        # If the stroke changed, force the number input back to 1
+        # --- RESET & SYNC LOGIC ---
         if "last_selected_stroke" not in st.session_state:
             st.session_state.last_selected_stroke = selected_stroke_topic
             
@@ -295,19 +290,55 @@ elif mode == "Sequential Review":
             st.session_state.seq_num_input = 1
             st.session_state.last_selected_stroke = selected_stroke_topic
 
-        # --- THE WRAPPING WIDGET ---
-        # We use the 'on_change' callback to trigger the wrap-around math
-        current_val = st.number_input(
-            f"Item (1 of {total_items})", 
-            min_value=0, 
-            max_value=total_items + 1, 
-            step=1, 
-            key="seq_num_input",
-            on_change=handle_seq_change
-        )
+        # Force value to 1 if it somehow became 0
+        if st.session_state.seq_num_input == 0:
+            st.session_state.seq_num_input = 1
 
-        # Map the widget value to the actual dataframe index
-        # (Using max/min as a safety net if the callback is mid-process)
+        # --- STYLING ---
+        st.markdown(f"""
+            <style>
+                /* 1. Ensure the box is wide enough for +/- buttons */
+                div[data-testid="stNumberInput"] {{
+                    width: 150px !important;
+                    text-align: right; 
+                }}
+                div[data-testid="stNumberInput"] input {{
+                    font-size: 18px !important;
+                    text-align: center;
+                }}
+                /* 2. Vertically align the text with the box */
+                .seq-count-text {{
+                    font-size: 18px;
+                    white-space: nowrap;
+                    line-height: 42px; /* Matches the height of the input box */
+                }}
+            </style>
+        """, unsafe_allow_html=True)
+
+        # --- THE SANDWICHED ROW ---
+        # We put an empty element at the start and end to push content to the middle
+        with st.container(horizontal=True, 
+                        vertical_alignment="center",
+                        horizontal_alignment="center",
+                        gap="small", 
+                        width="content"):
+            current_val = st.number_input(
+                "Select Item", 
+                min_value=0, 
+                max_value=total_items + 1, 
+                step=1, 
+                key="seq_num_input",
+                on_change=handle_seq_change,
+                label_visibility="collapsed"
+            )
+            
+            st.markdown(f'<span style="font-size: 18px; white-space: nowrap; margin-left: 10px;">of {total_items} items</span>', unsafe_allow_html=True)
+            
+
+        # st.markdown(f'<span style="font-size: 20px; white-space: 
+                # nowrap; margin-left: 10px;">of {total_items} items</span>', unsafe_allow_html=True)
+
+        # Map to index
         safe_val = max(1, min(current_val, total_items))
         new_index = section_df.index[safe_val - 1]
         
@@ -316,6 +347,48 @@ elif mode == "Sequential Review":
             st.session_state.show_resolution_clicked = False
     else:
         st.info("Please select a Stroke/Topic.")
+        st.session_state.current_index = None
+
+# --- MODE 2: RANDOM SHUFFLE  ---
+elif mode == "Random Shuffle":
+    # 1. Create the list with "ALL" at the front
+    stroke_topic_list = ["ALL"] + sorted(df['Stroke'].dropna().unique().tolist())
+    
+    # 2. Selection
+    selected_stroke_topic = st.segmented_control(
+        "Select Stroke/Topic (or ALL for total random):", 
+        stroke_topic_list,
+        default="ALL" # Default to total shuffle
+    )
+    
+    if selected_stroke_topic:
+        # 3. Filter Logic
+        if selected_stroke_topic == "ALL":
+            active_df = df
+        else:
+            active_df = df[df['Stroke'] == selected_stroke_topic]
+        
+        # 4. Situation Selection Logic
+        if not active_df.empty:
+            # Load new situation if none is selected OR if the stroke changed
+            # We track the stroke in session state to detect changes
+            if 'last_random_stroke' not in st.session_state:
+                st.session_state.last_random_stroke = selected_stroke_topic
+
+            if st.session_state.current_index is None or \
+               st.session_state.current_index not in active_df.index or \
+               st.session_state.last_random_stroke != selected_stroke_topic:
+                
+                get_new_situation(active_df)
+                st.session_state.last_random_stroke = selected_stroke_topic
+
+            # 5. Shuffle Button
+            if st.button("Shuffle Next Situation", width="content", icon=":material/refresh:", type="secondary"):
+                get_new_situation(active_df)
+        else:
+            st.warning(f"No situations found for {selected_stroke_topic}")
+    else:
+        st.info("Tap a Stroke/Topic or 'ALL' to start.")
         st.session_state.current_index = None
 
 # --- MODE 3: KEYWORD SEARCH ---
@@ -387,43 +460,39 @@ elif mode == "Search by Number":
             st.warning("Number not found.")
             st.session_state.current_index = None
 
-# --- MODE 5: Total Random Shuffle ---
-elif mode == "Total Random Shuffle":
-    # If we just switched to this mode and don't have a situation yet, 
-    # or if the previous situation was locked into a specific stroke, grab a new random one.
-    if st.session_state.current_index is None:
-        get_new_situation(df)
-    
-    # Optional: If you want a fresh shuffle every time you click the sidebar 'Total Random Shuffle' 
-    # even if you were already in it, we can trigger it here.
-    
-    if st.button("Shuffle Next", key="shuffle_btn"):
-        get_new_situation(df)
+
 
 # --- DISPLAY CARD ---
 if st.session_state.current_index is not None:
     row = df.loc[st.session_state.current_index]
     
     st.markdown("---")
-    st.info(f"**Stroke/Topic: {row['Stroke']}  #{row['Number']}**")
+    st.info(f"**Stroke/Topic: {row['Stroke']}  #{row['Number']}** \n\n **Situation:**")
     
+    # Prepare text for display
+    display_sit = row["Situation"]
+    display_res = row["Recommended resolution"]
+
+    # Apply highlighting if in Search Mode
+    if mode == "Keyword Search" and 'search_query' in locals() and search_query:
+        display_sit = highlight_text(display_sit, search_query)
+        display_res = highlight_text(display_res, search_query)
+
     # Situation Display
-    st.markdown(f'<div style="font-size: {font_size}px;"><b>Situation:</b><br>{row["Situation"]}</div>', unsafe_allow_html=True)
+    st.markdown(f'<div style="font-size: {font_size}px;"><br>{display_sit}</div>', unsafe_allow_html=True)
     
-    # The resolution should show if NOT hidden OR if the manual button was clicked
+    # Logic to show/hide resolution
     should_show = (not hide_resolution) or st.session_state.show_resolution_clicked
 
     if not should_show:
-        # We add a unique key to the button based on the index 
-        # so Streamlit doesn't get confused between different situations
         if st.button("Show Resolution", key=f"btn_{st.session_state.current_index}"):
             st.session_state.show_resolution_clicked = True
-            st.rerun()
     
     if should_show:
         st.write("") 
-        st.success("Recommended Resolution:")
-        st.markdown(f'<div style="font-size: {font_size}px;">{row["Recommended resolution"]}</div>', unsafe_allow_html=True)
+        st.success("**Recommended Resolution:**")
+        # Display the highlighted resolution
+        st.markdown(f'<div style="font-size: {font_size}px;">{display_res}</div>', unsafe_allow_html=True)
         
         st.warning(f"**Applicable Rule:**")
         st.markdown(f'<div style="font-size: {font_size}px;">{row["Applicable Rule"]}</div>', unsafe_allow_html=True)
