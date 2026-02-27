@@ -10,10 +10,11 @@ An interactive, mobile-responsive web application designed to help USA Swimming 
 ## ✨ Key Features
 
 * **Four Study Modes:**
-    * **Review by Stroke/Topic:** Focus on specific areas like Butterfly, Breaststroke, or Relays using an easy-to-tap segmented control.
     * **Sequential Review:** Cycle through situations in order, with automatic "wrap-around" navigation.
+    * **Random Shuffle:** Test your knowledge with a randomized experience across all topics.
+    * **Keyword Search:** Search for words or phrases across the ALL, or specific Stokes / Topics.
     * **Search by Number:** Jump directly to a specific situation number.
-    * **Total Random Shuffle:** Test your knowledge with a randomized experience across all topics.
+
 * **Mobile Optimized:** Designed specifically for portrait orientation on smartphones for use during breaks at swim meets.
 * **Customizable UI:** Adjust font sizes for readability and toggle resolution visibility for self-testing.
 * **Automatic Resets:** Smart logic resets item numbers when switching categories to ensure a smooth flow.
@@ -60,6 +61,14 @@ Content: © 2025 USA Swimming,  National Officials Committee.
 
 [USAS Situations & Resolutions Sroke & Turn Version: 03/07/2025](https://www.usaswimming.org/docs/default-source/officialsdocuments/officials-training-resources/situations-and-resolutions/situations-and-resolutions-stroke-and-turn.pdf)
 
+Resources:
+
+* [USA Swimming Website](https://www.usaswimming.org)
+
+* [USA Swimming 2026 Rulebook](https://websiteprodcoresa.blob.core.windows.net/sitefinity/docs/default-source/governance/governance-lsc-website/rules_policies/rulebooks/2026-rulebook.pdf)
+
+* [Pacific Northwest Swimming (PNS) Website](https://www.pns.org)
+
 Maintainer: [Guy Duryee]
 
 
@@ -68,11 +77,11 @@ For support, bug notification, or post idea for enhancement, please post in [dis
 
 We are actively working on improvements based on official feedback. Current roadmap includes:
 
-[ ] Search by keyword functionality.
+[x] Search by keyword functionality.
 
 [ ] Performance tracking.
 
-[ ] Enhanced Sequential Review stability.
+[x] Enhanced Sequential Review stability.
 
 ... and more. 
 
