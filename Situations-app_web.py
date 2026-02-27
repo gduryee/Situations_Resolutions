@@ -1,11 +1,15 @@
 import streamlit as st
 import pandas as pd
 from streamlit_js_eval import streamlit_js_eval
+import base64
+import os
 
 # Set Page Config
 st.set_page_config(page_title="USA Swimming Officials - Situations & Resolutions", layout="centered")
 
 image = 'USA_Swimming_Logo.svg'
+
+
 css = f'''
 <style>
     /* 1. Remove padding from the main content area */
@@ -19,19 +23,69 @@ css = f'''
     header {{
         visibility: hidden;
         height: 0px;
-    }}*/
-
-    /* 3. Keep your background image logic 
-    .stApp {{
-        background-image: url({image});
-        background-size: cover;
     }}
-    .stApp > header {{
-        background-color: transparent;
-    }}*/
+    */
 </style>
 '''
 st.markdown(css, unsafe_allow_html=True)
+
+def get_img_with_href(local_img_path, target_url, width=None):
+    """Encodes a local image file to Base64 and wraps it in an HTML hyperlink tag.
+
+    Args:
+        local_img_path: path to the image on disk.
+        target_url: href for the anchor tag.
+        width: optional pixel width to apply to the <img> element. If provided,
+            the image tag will include a width attribute.
+    """
+    # Determine the image format from the file extension
+    img_format = os.path.splitext(local_img_path)[-1].replace(".", "")
+    if img_format.lower() == 'svg':
+        mime_type = 'image/svg+xml'
+    else:
+        mime_type = f'image/{img_format}'
+        
+    # Read and encode the file
+    with open(local_img_path, "rb") as f:
+        data = f.read()
+    b64 = base64.b64encode(data).decode("utf-8")
+
+    # Build width attribute if requested
+    width_attr = f' width="{width}"' if width else ''
+
+    # Construct the HTML markdown string
+    html_string = f"""
+    <a href="{target_url}" target="_blank">
+        <img src="data:{mime_type};base64,{b64}" alt="Linked Image"{width_attr}/>
+    </a>
+    """
+    return html_string
+
+# Helper function to display the USA Swimming logo with a hyperlink
+def usa_swimming_logo_w_hyperlink(desired_width=100):
+    width = desired_width  # Desired width of the image in pixels
+    image_path = "USA_Swimming_Logo.svg"  # Local path to your image
+    target_url = "https://www.usaswimming.org/"  # URL you want to link to
+
+    # pass width through to helper, which will set the width attribute
+    inner_html = get_img_with_href(image_path, target_url, width=width)
+
+    # wrap in a centered container so the logo appears centered in the sidebar
+    html_string = f'<div style="text-align: center;">{inner_html}</div>'
+    st.markdown(html_string, unsafe_allow_html=True)
+
+# Helper function to display the USA Swimming logo with a hyperlink
+def pns_logo_w_hyperlink(desired_width=100):
+    width = desired_width  # Desired width of the image in pixels
+    image_path = "pns_logo.png"  # Local path to your image
+    target_url = "https://www.pns.org/page/home"  # URL you want to link to
+
+    # pass width through to helper, which will set the width attribute
+    inner_html = get_img_with_href(image_path, target_url, width=width)
+
+    # wrap in a centered container so the logo appears centered in the sidebar
+    html_string = f'<div style="text-align: center;">{inner_html}</div>'
+    st.markdown(html_string, unsafe_allow_html=True)
 
 # Get dimensions to determine Orientation. This is used to control formating where needed.
 def get_orientation_mode():
@@ -49,11 +103,20 @@ def get_orientation_mode():
     return "Portrait"
 
 # --- SIDEBAR NAVIGATION ---
-st.sidebar.title("Navigation")
-mode = st.sidebar.radio(
-    "Choose a Study Mode:",
-    ["Review by Stroke/Topic", "Sequential Review", "Search by Number", "Total Random Shuffle"]
-)
+
+with st.sidebar:
+    with st.container(horizontal_alignment="center"):
+        usa_swimming_logo_w_hyperlink()
+    st.markdown("---")
+    st.title("Navigation")
+    mode = st.sidebar.radio(
+        "Choose a Study Mode:",
+        ["Sequential Review", 
+        "Keyword Search",
+        "Search by Number", 
+        "Review by Stroke/Topic", 
+        "Total Random Shuffle"]
+    )
 
 # --- MODE SWITCH DETECTION ---
 if 'last_mode' not in st.session_state:
@@ -74,6 +137,15 @@ hide_resolution = st.sidebar.checkbox("Hide resolution", value=False)
 
 # Font Size Slider
 font_size = st.sidebar.slider("Adjust Font Size", min_value=14, max_value=36, value=18)
+
+with st.sidebar:
+    usaswimming_rulebook_url = "https://websiteprodcoresa.blob.core.windows.net/sitefinity/docs/default-source/governance/governance-lsc-website/rules_policies/rulebooks/2026-rulebook.pdf"
+    st.markdown(f"[2026 USA Swimming Rulebook]({usaswimming_rulebook_url})")
+    usaswimming_st_sit_resol_url = "https://www.usaswimming.org/docs/default-source/officialsdocuments/officials-training-resources/situations-and-resolutions/situations-and-resolutions-stroke-and-turn.pdf"
+    st.markdown(f"[Mar. 2025 USA Swimming Situations & Resolutions - Stroke & Turn]({usaswimming_st_sit_resol_url})")
+
+    st.markdown("---")
+    pns_logo_w_hyperlink()
 
 orientation_mode = get_orientation_mode()
 #st.write(f"Orientation Mode: {orientation_mode}")
@@ -97,6 +169,33 @@ def get_new_situation(filtered_df):
         # If empty, reset the index so no card is shown
         st.session_state.current_index = None
 
+def perform_keyword_search(df, query, search_field, selected_stroke):
+    if not query:
+        return pd.DataFrame()
+    
+    # 1. Filter by Stroke/Topic if not "All"
+    if selected_stroke != "All":
+        filtered_df = df[df['Stroke'] == selected_stroke]
+    else:
+        filtered_df = df.copy()
+        
+    # 2. Perform text search (case-insensitive)
+    q = query.lower()
+    
+    if search_field == "Situations":
+        results = filtered_df[filtered_df["Situation"].str.lower().str.contains(q, na=False)]
+    elif search_field == "Resolutions":
+        results = filtered_df[filtered_df["Recommended resolution"].str.lower().str.contains(q, na=False)]
+    else:  # "All" option
+        # Search across both "Situations" and "Resolutions" columns
+        mask = (
+            filtered_df["Situation"].str.lower().str.contains(q, na=False) | 
+            filtered_df["Recommended resolution"].str.lower().str.contains(q, na=False)
+        )
+        results = filtered_df[mask]
+        
+    return results
+
 @st.cache_data
 def load_data():
     file_path = "Situations-n-Resolutions-with-sections.xlsx"
@@ -116,25 +215,19 @@ def landscape_title_mode():
     header_col1, header_col2, header_col3 = st.columns([1, 2, 1])
 
     with header_col1:
-        # On mobile, we center the image using a div
-        st.markdown('<div style="text-align: center;">', unsafe_allow_html=True)
-        st.image("USA_Swimming_Logo.svg", width=100) # Slightly smaller for mobile
-        st.markdown('</div>', unsafe_allow_html=True)
-
+        usa_swimming_logo_w_hyperlink()
     with header_col2:
-        st.markdown("<h2 style='text-align: center; margin-top: -20px;'>USA Swimming Officials</h2>", unsafe_allow_html=True)
+        st.markdown("<h2 style='text-align: center; margin-top: -20px;'><a href='https://www.usaswimming.org' target='_blank' style='color: inherit; text-decoration: none;'>USA Swimming</a> Officials</h2>", unsafe_allow_html=True)
         st.markdown("<h4 style='text-align: center; margin-top: -10px;'>Situations & Resolutions</h4>", unsafe_allow_html=True)
         st.markdown("<h5 style='text-align: center; margin-top: -10px;'>Stroke & Turn</h5>", unsafe_allow_html=True)
     with header_col3:
-        st.markdown('<div style="text-align: center;">', unsafe_allow_html=True)
-        st.image("pns_logo.png", width=100)
-        st.markdown('</div>', unsafe_allow_html=True)
+        pns_logo_w_hyperlink()
 
 def portrait_title_mode():
      with st.container(horizontal_alignment="center"):
-        st.image("USA_Swimming_Logo.svg", width=100)
+        usa_swimming_logo_w_hyperlink()
         # Reduced margin-top on the first title
-        st.markdown("<h3 style='text-align: center; margin-top: -20px;'>USA Swimming Officials</h3>", unsafe_allow_html=True)
+        st.markdown("<h3 style='text-align: center; margin-top: -20px;'><a href='https://www.usaswimming.org' target='_blank' style='color: inherit; text-decoration: none;'>USA Swimming</a> Officials</h3>", unsafe_allow_html=True)
         st.markdown("<h5 style='text-align: center; margin-top: -10px;'>Situations & Resolutions</h5>", unsafe_allow_html=True)
         st.markdown("<h5 style='text-align: center; margin-top: -10px;'>Stroke & Turn</h5>", unsafe_allow_html=True)
 
@@ -225,7 +318,53 @@ elif mode == "Sequential Review":
         st.info("Please select a Stroke/Topic.")
         st.session_state.current_index = None
 
-# --- MODE 3: Search by Number ---
+# --- MODE 3: KEYWORD SEARCH ---
+elif mode == "Keyword Search":
+    st.markdown("### 🔍 Keyword Search")
+    
+    # Field Selection - Added "Both"
+    search_field = st.segmented_control(
+        "Search within:", 
+        ["All", "Situations", "Resolutions"], 
+        default="All"
+    )
+    
+    # Breadth Selection
+    stroke_list = ["All"] + sorted(df['Stroke'].dropna().unique().tolist())
+    selected_stroke = st.segmented_control(
+        "Limit to Stroke/Topic:", 
+        stroke_list, 
+        default="All"
+    )
+    
+    search_query = st.text_input("Enter keyword or phrase:", placeholder="Search...")
+    
+    if search_query:
+        search_results = perform_keyword_search(df, search_query, search_field, selected_stroke)
+        
+        if not search_results.empty:
+            st.success(f"Found {len(search_results)} matches.")
+            
+            # Create a dictionary for the dropdown: "Display Name": Index
+            result_options = {
+                f"#{row['Number']} [{row['Stroke']}] - {row['Situation'][:50]}...": idx 
+                for idx, row in search_results.iterrows()
+            }
+            
+            selected_label = st.selectbox("Select a result to view details:", options=list(result_options.keys()))
+            
+            # Update the global index
+            new_index = result_options[selected_label]
+            if st.session_state.current_index != new_index:
+                st.session_state.current_index = new_index
+                st.session_state.show_resolution_clicked = False
+        else:
+            st.warning("No matches found. Try broadening your search.")
+            st.session_state.current_index = None
+    else:
+        st.session_state.current_index = None
+
+# --- MODE 4: Search by Number ---
 elif mode == "Search by Number":
     # We explicitly set this to None if they haven't searched yet 
     # so the old card from the previous mode disappears.
@@ -248,7 +387,7 @@ elif mode == "Search by Number":
             st.warning("Number not found.")
             st.session_state.current_index = None
 
-# --- MODE 4: Total Random Shuffle ---
+# --- MODE 5: Total Random Shuffle ---
 elif mode == "Total Random Shuffle":
     # If we just switched to this mode and don't have a situation yet, 
     # or if the previous situation was locked into a specific stroke, grab a new random one.
@@ -295,7 +434,7 @@ def landscape_footer_mode():
     st.markdown(
             """
             <div style="text-align: center; color: grey; font-size: 14px;">
-                © 2025 USA Swimming <br>
+                © 2025 <a href="https://www.usaswimming.org" target="_blank">USA Swimming</a> <br>
                 National Officials Committee, Version 03/07/2025<br>
             </div>
             """, 
@@ -304,12 +443,11 @@ def landscape_footer_mode():
 
 def portrait_footer_mode():
     with st.container(horizontal_alignment="center"):
-        st.markdown("---") # Adds a horizontal line to separate the content from the footer
-        st.image("pns_logo.png", width=100)
+        pns_logo_w_hyperlink()
         st.markdown(
             """
             <div style="text-align: center; color: grey; font-size: 14px;">
-                © 2025 USA Swimming <br>
+                © 2025 <a href="https://www.usaswimming.org" target="_blank">USA Swimming</a> <br>
                 National Officials Committee, Version 03/07/2025<br>
             </div>
             """, 
